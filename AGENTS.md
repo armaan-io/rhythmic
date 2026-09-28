@@ -18,10 +18,12 @@ Before continuing product planning or implementation, read
 `docs/planning/rhythm-trainer-interview.md`. It preserves the user's answers
 through question 48, superseded decisions, and unresolved topics.
 
-The interview is incomplete. Ask one question at a time, recommend an answer,
-and wait for the user's decision. Do not implement the app or timing prototype
-until the user explicitly confirms shared understanding and authorizes proceeding.
-Permission to save this interview is not implementation approval.
+The full-app interview is incomplete. Ask one question at a time, recommend an
+answer, and wait for the user's decision. The user subsequently confirmed shared
+understanding and authorized **only the timing-test build**, described in
+`docs/planning/timing-test-build.md`. Do not expand this to the full app without
+further confirmation and authorization. Permission to save the original
+interview was not implementation approval.
 
 This local record is an interview checkpoint, not an approved PRD or executable
 ticket. Approved PRDs and issues still belong in the configured GitHub tracker.

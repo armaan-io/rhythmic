@@ -2,6 +2,11 @@
 
 **Status: DRAFT — interview incomplete; implementation not authorized.**
 
+**Subsequent scope authorization:** after saving this checkpoint, the user
+explicitly confirmed and authorized the limited timing-test build in
+`docs/planning/timing-test-build.md`. The status above and authorization notes
+below preserve the original interview state; the full app remains unauthorized.
+
 This document preserves the agreed product direction and all 48 answered
 questions from the initial design interview. It is a decision record, not a
 verbatim transcript or a finalized implementation specification. Individual
