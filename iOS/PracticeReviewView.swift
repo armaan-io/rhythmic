@@ -24,20 +24,28 @@ struct PracticeReviewView: View {
     let result: PracticeResult
     @State private var selection: ReviewSelection?
     @State private var nearby: [ReviewSelection] = []
+    @State private var selectedBar: Int?
+    @State private var showsScoring = false
+    @ScaledMetric(relativeTo: .caption) private var countWidth: CGFloat = 72
 
     var body: some View {
         VStack(spacing: 18) {
-            Text(exercise.title).font(.title2.bold())
-            Text("\(bpm) BPM").foregroundStyle(.secondary)
-            Text("\(result.score) / 100").font(.largeTitle.bold()).accessibilityLabel("Accuracy \(result.score) out of 100")
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 88))], spacing: 10) {
+            VStack(spacing: 4) {
+                Text(exercise.title).font(.headline)
+                Text("\(bpm) BPM").font(.subheadline).foregroundStyle(.secondary)
+            }
+            Text("\(result.score) / 100").font(.largeTitle.bold().monospacedDigit()).accessibilityLabel("Accuracy \(result.score) out of 100")
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: countWidth))], spacing: 8) {
                 count("On time", result.counts.onTime)
                 count("Early", result.counts.early)
                 count("Late", result.counts.late)
                 count("Missed", result.counts.missed)
                 count("Extra", result.counts.extra)
             }
-            RhythmNotationView(exercise: exercise)
+            Button("How scoring works") { showsScoring = true }
+                .font(.caption)
+                .frame(minHeight: 44)
+                .tint(AppTheme.accent)
             VStack(alignment: .leading, spacing: 8) {
                 Text("Your timing").font(.headline)
                 Text("○ Target   ● Your tap").font(.callout)
@@ -47,30 +55,41 @@ struct PracticeReviewView: View {
                     timeline(bar: bar)
                 }
             }
-            if let selection {
-                Text(description(selection)).font(.callout.bold())
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            if !nearby.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Inspect nearby / overlapping markers").font(.caption)
-                    ForEach(nearby) { item in
-                        Button(description(item)) { selection = item }
-                            .buttonStyle(.bordered)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+            RhythmNotationView(exercise: exercise)
+        }
+        .sheet(isPresented: $showsScoring) {
+            NavigationStack {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Each target is worth an equal share of 100 points.")
+                        Text("On time earns full credit. Early or late earns half credit. Missed earns no credit. Each extra tap subtracts one full target’s value.")
+                        Text("Score = 100 × (on time + 0.5 × (early + late) − extras) ÷ targets")
+                            .font(.callout.monospaced())
+                        Text("The score cannot fall below 0 and is rounded to the nearest whole number. Only all on-time targets with no extras earn 100; other results are capped at 99.")
+                    }
+                    .padding()
+                }
+                .background(AppTheme.background)
+                .navigationTitle("How scoring works")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { showsScoring = false }
                     }
                 }
             }
+            .tint(AppTheme.accent)
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
     }
 
     private func count(_ label: String, _ value: Int) -> some View {
-        VStack {
+        VStack(spacing: 2) {
             Text("\(value)").font(.title3.monospacedDigit())
             Text(label).font(.caption)
         }
-        .frame(maxWidth: .infinity).padding(8)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
     }
 
@@ -96,16 +115,16 @@ struct PracticeReviewView: View {
                         let x = position(target.beat - Double(bar * 4), width: size.width)
                         let selected = targetSelected(target)
                         context.stroke(Path(ellipseIn: CGRect(x: x - 7, y: 44, width: 14, height: 14)),
-                                       with: .color(selected ? .orange : .primary), lineWidth: selected ? 3 : 1.5)
+                                        with: .color(selected ? AppTheme.selection : .primary), lineWidth: selected ? 3 : 1.5)
                     }
                     for tap in result.taps where row(for: tap.beat) == bar {
                         let x = position(tap.beat - Double(bar * 4), width: size.width)
                         let selected = tapSelected(tap)
                         context.fill(Path(ellipseIn: CGRect(x: x - 4, y: 47, width: 8, height: 8)),
-                                     with: .color(selected ? .orange : .accentColor))
+                                      with: .color(selected ? AppTheme.selection : AppTheme.accent))
                         if selected {
                             context.stroke(Path(ellipseIn: CGRect(x: x - 9, y: 42, width: 18, height: 18)),
-                                           with: .color(.orange), lineWidth: 1)
+                                            with: .color(AppTheme.selection), lineWidth: 1)
                         }
                     }
                 }
@@ -118,20 +137,46 @@ struct PracticeReviewView: View {
                         abs(position(localBeat($0, bar: bar), width: geometry.size.width) - value.location.x)
                             < abs(position(localBeat($1, bar: bar), width: geometry.size.width) - value.location.x)
                     }
-                    nearby = candidates
+                    nearby = candidates.count > 1 ? candidates : []
                     selection = candidates.first
+                    selectedBar = candidates.isEmpty ? nil : bar
                 })
-                .accessibilityHidden(true)
+                .accessibilityRepresentation {
+                    VStack {
+                        ForEach(markers(bar: bar)) { item in
+                            Button("Bar \(bar + 1), \(description(item))") {
+                                selection = item
+                                selectedBar = bar
+                                nearby = []
+                            }
+                            .accessibilityHint("Selects this marker and highlights its matched partner, if any.")
+                            .accessibilityAddTraits(isHighlighted(item) ? [.isSelected] : [])
+                        }
+                    }
+                }
             }
             .frame(height: 82)
-            // Also provides a non-spatial route to selecting collocated markers.
-            Button("Inspect bar \(bar + 1) markers") {
-                nearby = markers(bar: bar)
-                selection = nearby.first
-            }.font(.caption)
+            if selectedBar == bar, let selection {
+                Text(description(selection))
+                    .font(.callout)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                if nearby.count > 1 {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Choose a nearby marker").font(.caption).foregroundStyle(.secondary)
+                        ForEach(nearby) { item in
+                            Button(description(item)) { self.selection = item }
+                                .font(.callout)
+                                .padding(.vertical, 8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .accessibilityAddTraits(isHighlighted(item) ? [.isSelected] : [])
+                        }
+                    }
+                    .tint(AppTheme.accent)
+                }
+            }
         }
         .padding(8)
-        .background(Color.secondary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+        .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 8))
     }
 
     // Equal-sized margins make negative first-note offsets visible without
@@ -166,11 +211,29 @@ struct PracticeReviewView: View {
         switch item {
         case .target(let id):
             guard let target = result.targets.first(where: { $0.id == id }) else { return "Target" }
-            return "Target \(id + 1): \(target.judgment.label)" + (target.tapID == nil ? " — no matched tap" : " — matched pair highlighted")
+            let partner = target.tapID.flatMap { tapID in result.taps.firstIndex { $0.id == tapID } }
+            return "Target \(id + 1), \(musicalPosition(target.beat)): \(target.judgment.label)"
+                + (partner.map { " — matched to tap \($0 + 1), \(musicalPosition(result.taps[$0].beat))" } ?? " — no matched tap")
         case .tap(let id):
             guard let index = result.taps.firstIndex(where: { $0.id == id }) else { return "Tap" }
             let tap = result.taps[index]
-            return "Tap \(index + 1): \(tap.judgment.label)" + (tap.targetID == nil ? " — no matched target" : " — matched pair highlighted")
+            let partner = tap.targetID.flatMap { targetID in result.targets.first { $0.id == targetID } }
+            return "Tap \(index + 1), \(musicalPosition(tap.beat)): \(tap.judgment.label)"
+                + (partner.map { " — matched to target \($0.id + 1), \(musicalPosition($0.beat))" } ?? " — no matched target")
+        }
+    }
+
+    private func musicalPosition(_ beat: Double) -> String {
+        if beat < 0 { return "before bar 1" }
+        let bar = row(for: beat)
+        let beatNumber = min(4, Int(beat - Double(bar * 4)) + 1)
+        return "bar \(bar + 1), beat \(beatNumber)"
+    }
+
+    private func isHighlighted(_ item: ReviewSelection) -> Bool {
+        switch item {
+        case .target(let id): return result.targets.first { $0.id == id }.map(targetSelected) ?? false
+        case .tap(let id): return result.taps.first { $0.id == id }.map(tapSelected) ?? false
         }
     }
 }

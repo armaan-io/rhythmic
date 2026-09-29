@@ -1,28 +1,69 @@
 import SwiftUI
+import TimingCore
 
 @main
 @MainActor
 struct RhythmTimingApp: App {
-    @StateObject private var model = TimingHarnessModel()
     @StateObject private var practice = PracticeModel()
+    @StateObject private var preferences = AppPreferences()
+    @State private var path: [String] = []
+    #if DEBUG
+    @StateObject private var model = TimingHarnessModel()
     @State private var diagnosticsPresented = false
+    #endif
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
-            NavigationStack {
-                PracticeView(model: practice)
-                    .navigationTitle("Rhythm Trainer")
-                    .navigationBarTitleDisplayMode(.inline)
+            NavigationStack(path: $path) {
+                List {
+                    ForEach(Exercise.catalog) { exercise in
+                        Section(libraryHeading(for: exercise)) {
+                            Button {
+                                practice.select(exercise)
+                                path.append(exercise.id)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Text(exercise.title).font(.headline).foregroundStyle(.primary)
+                                        Text("\(exercise.barCount) \(exercise.barCount == 1 ? "bar" : "bars")")
+                                            .font(.subheadline).foregroundStyle(.secondary)
+                                    }
+                                    Spacer(minLength: 0)
+                                    Image(systemName: "chevron.right").font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary).accessibilityHidden(true)
+                                }.padding(.vertical, 12).contentShape(Rectangle())
+                            }
+                            .listRowBackground(AppTheme.surface)
+                        }
+                    }
+                }
+                    .scrollContentBackground(.hidden)
+                    .background(AppTheme.background)
+                    .navigationTitle("Exercises")
                     .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
+                            Button("Settings", systemImage: "gearshape") { path.append("settings") }
+                        }
+                        #if DEBUG
+                        ToolbarItem(placement: .topBarLeading) {
                             Button("Diagnostics", systemImage: "waveform.path.ecg") {
                                 diagnosticsPresented = true
                             }
-                            .disabled(practice.busy)
+                        }
+                        #endif
+                    }
+                    .navigationDestination(for: String.self) { destination in
+                        if destination == "settings" {
+                            SettingsView(model: practice, preferences: preferences)
+                        } else {
+                            PracticeView(model: practice, preferences: preferences) { path.removeAll() }
                         }
                     }
             }
+                .tint(AppTheme.accent)
+                .preferredColorScheme(preferences.appearance.colorScheme)
+                #if DEBUG
                 .sheet(isPresented: $diagnosticsPresented) {
                     NavigationStack {
                         HarnessView(model: model)
@@ -37,16 +78,29 @@ struct RhythmTimingApp: App {
                     }
                     .onDisappear { model.leaveActiveScene() }
                 }
+                #endif
                 .onChange(of: scenePhase) { _, phase in
                     if phase != .active {
+                        #if DEBUG
                         model.leaveActiveScene()
+                        #endif
                         practice.leaveActiveScene()
                     }
                 }
         }
     }
+
+    private func libraryHeading(for exercise: Exercise) -> String {
+        switch exercise.skill {
+        case "Quarter-note timing": return "Quarters"
+        case "Eighth-note subdivisions": return "Eighth Notes"
+        case "Simple syncopation": return "Syncopation"
+        default: return exercise.skill
+        }
+    }
 }
 
+#if DEBUG
 @MainActor
 private struct HarnessView: View {
     @ObservedObject var model: TimingHarnessModel
@@ -127,3 +181,4 @@ private struct HarnessView: View {
         }
     }
 }
+#endif

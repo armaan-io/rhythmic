@@ -2,6 +2,40 @@ import XCTest
 import TimingCore
 
 final class PracticeSessionTests: XCTestCase {
+    func testOnlyAllOnTimeWithoutExtrasEarns100AcrossCatalog() throws {
+        for exercise in Exercise.catalog {
+            for error in [Judgment.onTime, .early, .late, .missed, .extra] {
+                var session = try PracticeSession(exercise: exercise, bpm: 60)
+                try session.start(at: 10)
+                for (index, beat) in exercise.onsetBeats.enumerated() {
+                    if index == 0 && error == .missed { continue }
+                    let offset = index == 0 ? (error == .early ? -0.1 : (error == .late ? 0.1 : 0)) : 0
+                    let time = 14 + beat + offset
+                    session.recordContact(eventTime: time, receivedTime: 30)
+                }
+                if error == .extra { session.recordContact(eventTime: 14.25, receivedTime: 30) }
+                session.advance(to: 30)
+                let result = try XCTUnwrap(session.result)
+                if error == .onTime {
+                    XCTAssertEqual(result.score, 100, exercise.id)
+                } else {
+                    XCTAssertLessThanOrEqual(result.score, 99, "\(exercise.id): \(error)")
+                }
+            }
+        }
+    }
+
+    func testExtraPenaltiesFloorScoreAtZeroEvenWithEarnedCredit() throws {
+        for times in [[14.0, 15, 16, 17, 14.5, 15.5, 16.5, 17.5],
+                      [14.0, 14.5, 15.5], [14.1, 14.5], [14.5]] {
+            var session = try PracticeSession(exercise: Exercise.catalog[0], bpm: 60)
+            try session.start(at: 10)
+            for time in times { session.recordContact(eventTime: time, receivedTime: 18) }
+            session.advance(to: 18)
+            XCTAssertEqual(session.result?.score, 0, "contacts \(times)")
+        }
+    }
+
     func testEndObservationCanDrainSeparateInputBatchesWithoutExtendingScoredInterval() throws {
         var session = try PracticeSession(exercise: Exercise.catalog[0], bpm: 60)
         try session.start(at: 10) // Count-in 10–14, phrase 14–18.
@@ -17,7 +51,7 @@ final class PracticeSessionTests: XCTestCase {
         session.advance(to: 18.1)
         XCTAssertEqual(session.result?.counts.onTime, 4)
         XCTAssertEqual(session.result?.counts.extra, 1)
-        XCTAssertEqual(session.result?.score, 80)
+        XCTAssertEqual(session.result?.score, 75)
 
         try session.start(at: 20)
         session.advance(to: 28, finalize: false)
@@ -26,22 +60,19 @@ final class PracticeSessionTests: XCTestCase {
         XCTAssertNil(session.result)
     }
 
-    func testHalfPointRoundingDoesNotChangeWithDeviceUptime() throws {
+    func testOneOnTimeAndThreeEarlyOrLateRoundTo63AtAnyDeviceUptime() throws {
         for uptime in [0.0, 100.123, 1000.0, 1000.123, 10000.123, 1_000_000.123] {
             var session = try PracticeSession(exercise: Exercise.catalog[0], bpm: 60)
             try session.start(at: uptime)
-            // Independently worked example: .75 + .5 + .25 + 0 points = 37.5%.
-            for offset in [4.075, 5.1, 6.125, 7.15] {
+            // One full credit and three half credits = 62.5%, rounded to 63.
+            for offset in [4.0, 4.9, 6.125, 7.15] {
                 session.recordContact(eventTime: uptime + offset, receivedTime: uptime + 8)
             }
             session.advance(to: uptime + 8)
-            XCTAssertEqual(session.result?.score, 38, "uptime \(uptime)")
-            try session.start(at: uptime)
-            for offset in [4.075001, 5.1, 6.125, 7.15] {
-                session.recordContact(eventTime: uptime + offset, receivedTime: uptime + 8)
-            }
-            session.advance(to: uptime + 8)
-            XCTAssertEqual(session.result?.score, 37, "A real below-half score must still round down")
+            XCTAssertEqual(session.result?.score, 63, "uptime \(uptime)")
+            XCTAssertEqual(session.result?.counts.onTime, 1)
+            XCTAssertEqual(session.result?.counts.early, 1)
+            XCTAssertEqual(session.result?.counts.late, 2)
         }
     }
 
@@ -55,7 +86,7 @@ final class PracticeSessionTests: XCTestCase {
             let result = try XCTUnwrap(session.result)
             XCTAssertEqual(result.counts.missed, expectedMisses)
             XCTAssertEqual(result.counts.extra, 0)
-            XCTAssertEqual(result.score, 0)
+            XCTAssertEqual(result.score, expectedMisses == 3 ? 13 : 0)
             if expectedMisses == 3 {
                 XCTAssertEqual(result.targets[0].judgment, .early)
                 XCTAssertEqual(result.targets[0].tapID, 0)
@@ -109,9 +140,9 @@ final class PracticeSessionTests: XCTestCase {
         XCTAssertEqual(session.phase, .ready)
     }
 
-    func testScoresUseAuthorizedPercentExamplesAndLinearCreditWithoutClockRealignment() throws {
+    func testScoresUseFixedPartialCreditAcrossWindowWithoutClockRealignment() throws {
         let eight = [14.0, 14.5, 15, 15.5, 16, 16.5, 17, 17.5]
-        for (times, score) in [(eight, 100), (Array(eight.dropLast()), 88), (eight + [17.75], 89), ([], 0)] {
+        for (times, score) in [(eight, 100), (Array(eight.dropLast()), 88), (eight + [17.75], 88), ([], 0)] {
             var session = try PracticeSession(exercise: Exercise.catalog[1], bpm: 60)
             try session.start(at: 10)
             for time in times { session.recordContact(eventTime: time, receivedTime: 18) }
@@ -124,7 +155,7 @@ final class PracticeSessionTests: XCTestCase {
             session.recordContact(eventTime: time, receivedTime: 8)
         }
         session.advance(to: 8)
-        XCTAssertEqual(session.result?.score, 38) // Credits .75 + .5 + .25 + 0 = 1.5 / 4.
+        XCTAssertEqual(session.result?.score, 50) // Each late match earns .5, including the boundary.
         XCTAssertEqual(session.result?.counts.late, 4)
         try session.start(at: 10)
         for time in [14.1, 15.1, 16.1, 17.1] {
@@ -133,6 +164,16 @@ final class PracticeSessionTests: XCTestCase {
         session.advance(to: 18)
         XCTAssertEqual(session.result?.score, 50) // Consistent lateness is never shifted away.
         XCTAssertEqual(session.result?.counts.late, 4)
+        for offset in [-0.15, -0.125, -0.075, -0.05000001, 0.05000001, 0.075, 0.125, 0.15] {
+            try session.start(at: 10)
+            for target in [14.0, 15, 16, 17] {
+                session.recordContact(eventTime: target + offset, receivedTime: 18)
+            }
+            session.advance(to: 18)
+            XCTAssertEqual(session.result?.score, 50, "offset \(offset)")
+            XCTAssertEqual(session.result?.counts.early, offset < 0 ? 4 : 0)
+            XCTAssertEqual(session.result?.counts.late, offset > 0 ? 4 : 0)
+        }
     }
 
     func testMatchingMaximizesCardinalityThenErrorThenChronologicalTargetAndTap() throws {
@@ -146,7 +187,7 @@ final class PracticeSessionTests: XCTestCase {
         XCTAssertEqual(session.result?.targets.map(\.tapID), [0, 1, 2, nil, nil, nil, nil, nil])
         XCTAssertEqual(session.result?.counts.missed, 5)
         XCTAssertEqual(session.result?.counts.extra, 0)
-        XCTAssertEqual(session.result?.score, 13) // Boundary matches earn zero; exact middle earns one.
+        XCTAssertEqual(session.result?.score, 25) // Two boundary half credits and one on-time credit.
 
         try session.start(at: 10)
         for time in [11.1875, 11.0625] { session.recordContact(eventTime: time, receivedTime: 12) }
@@ -183,7 +224,7 @@ final class PracticeSessionTests: XCTestCase {
             session.advance(to: 200)
             let result = try XCTUnwrap(session.result)
             XCTAssertEqual(result.targets.map(\.judgment), [.onTime, .onTime, .late, .early], "BPM \(bpm)")
-            XCTAssertEqual(result.score, 50)
+            XCTAssertEqual(result.score, 75)
             XCTAssertEqual(result.counts.missed, 0)
             XCTAssertEqual(result.counts.extra, 0)
 
@@ -274,7 +315,7 @@ final class PracticeSessionTests: XCTestCase {
         XCTAssertEqual(result.taps[0].beat, -0.02, accuracy: 1e-9)
         XCTAssertEqual(result.counts.onTime, 4)
         XCTAssertEqual(result.counts.extra, 1)
-        XCTAssertEqual(result.score, 80)
+        XCTAssertEqual(result.score, 75)
 
         var rest = try PracticeSession(exercise: Exercise.catalog[2], bpm: 60)
         try rest.start(at: 10)
@@ -288,7 +329,7 @@ final class PracticeSessionTests: XCTestCase {
         XCTAssertEqual(restResult.taps.map(\.id), [1, 2, 3, 4, 5])
         XCTAssertEqual(restResult.taps[0].judgment, .extra)
         XCTAssertEqual(restResult.counts.extra, 1)
-        XCTAssertEqual(restResult.score, 80)
+        XCTAssertEqual(restResult.score, 75)
     }
 
     func testWholePhraseMatchingKeepsOriginalIDsAndDoesNotCascadeMissesOrExtras() throws {
@@ -301,7 +342,7 @@ final class PracticeSessionTests: XCTestCase {
         session.advance(to: 19)
         XCTAssertEqual(session.phase, .review)
         let result = try XCTUnwrap(session.result)
-        XCTAssertEqual(result.score, 50) // Three points / (four targets + two extras).
+        XCTAssertEqual(result.score, 25) // Three full credits minus two extras, over four targets.
         XCTAssertEqual(result.counts.onTime, 3)
         XCTAssertEqual(result.counts.early, 0)
         XCTAssertEqual(result.counts.late, 0)

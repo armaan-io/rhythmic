@@ -4,141 +4,181 @@ import TimingCore
 @MainActor
 struct PracticeView: View {
     @ObservedObject var model: PracticeModel
+    @ObservedObject var preferences: AppPreferences
+    let returnToLibrary: () -> Void
+    @State private var editor: Editor?
+
+    private enum Editor: String, Identifiable {
+        case tempo, volume, bluetooth
+        var id: String { rawValue }
+    }
+    private var attempting: Bool { model.busy && model.phase != .listening }
 
     var body: some View {
         Group {
-            if model.busy {
-                performance
-            } else if let result = model.result, model.phase == .review {
+            if let result = model.result, model.phase == .review {
                 ScrollView {
-                    VStack(spacing: 20) {
-                        exercisePicker
-                        PracticeReviewView(exercise: model.exercise, bpm: model.bpm, result: result)
-                            .id(result.performanceStartTime)
-                        Button("Retry", action: model.retry)
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.large)
-                        Text("Retry returns to preparation. Results are not saved.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }.padding()
+                    PracticeReviewView(exercise: model.exercise, bpm: model.bpm, result: result)
+                        .id(result.performanceStartTime)
+                        .padding(20)
+                }
+                .safeAreaInset(edge: .bottom) {
+                    Button(action: model.retry) {
+                        Text("Retry").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent).controlSize(.large)
+                    .foregroundStyle(AppTheme.onAccent)
+                    .padding().background(AppTheme.background)
                 }
             } else {
-                preparation
+                GeometryReader { geometry in
+                    practiceLayout(height: geometry.size.height)
+                }
             }
         }
-        .alert("Practice", isPresented: Binding(
+        .background(AppTheme.background)
+        .navigationTitle(model.phase == .review ? "Review" : model.exercise.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            if attempting {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel", action: model.cancel)
+                }
+            } else {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Library", systemImage: "chevron.left") {
+                        model.cancel()
+                        returnToLibrary()
+                    }
+                }
+            }
+        }
+        .sheet(item: $editor) { item in
+            switch item {
+            case .tempo:
+                EditorSheet(title: "Tempo") {
+                    VStack(spacing: 24) {
+                        Text("\(model.bpm) BPM").font(.largeTitle.monospacedDigit())
+                        Slider(value: Binding(get: { Double(model.bpm) }, set: { model.setBPM(Int($0.rounded())) }),
+                               in: 30...240, step: 1).accessibilityLabel("Tempo")
+                        Stepper("\(model.bpm) BPM", value: Binding(get: { model.bpm }, set: model.setBPM), in: 30...240)
+                    }.disabled(model.busy)
+                }
+            case .volume:
+                EditorSheet(title: "Volume") { AudioControls(model: model) }
+            case .bluetooth:
+                EditorSheet(title: "Bluetooth audio") {
+                    Text("Wireless audio can delay the metronome and your tap sounds. Timing feedback is not calibrated for that delay. For more reliable practice, use the speaker or wired headphones.")
+                }
+            }
+        }
+        .alert("Unable to play", isPresented: Binding(
             get: { model.errorMessage != nil },
             set: { if !$0 { model.errorMessage = nil } }
-        )) {
-            Button("OK") { model.errorMessage = nil }
-        } message: { Text(model.errorMessage ?? "") }
+        )) { Button("OK") { model.errorMessage = nil } }
+        message: { Text(model.errorMessage ?? "") }
     }
 
-    private var exercisePicker: some View {
-        Picker("Exercise", selection: Binding(
-            get: { model.exercise.id },
-            set: { id in
-                if let exercise = Exercise.catalog.first(where: { $0.id == id }) { model.select(exercise) }
-            }
-        )) {
-            ForEach(Exercise.catalog) { exercise in
-                Text("\(exercise.skill) — \(exercise.title)").tag(exercise.id)
-            }
-        }
-        .pickerStyle(.menu)
-        .disabled(model.busy)
-    }
-
-    private var preparation: some View {
-        ScrollView {
-            VStack(spacing: 18) {
-                exercisePicker
-                Text(model.exercise.title).font(.title2.bold())
-                Text(model.exercise.skill).foregroundStyle(.secondary)
-                RhythmNotationView(exercise: model.exercise)
-                Stepper("\(model.bpm) BPM", value: Binding(get: { model.bpm }, set: model.setBPM), in: 30...240)
-                Slider(value: Binding(get: { Double(model.bpm) }, set: { model.setBPM(Int($0.rounded())) }),
-                       in: 30...240, step: 1)
-                    .accessibilityLabel("Tempo")
-                HStack(spacing: 24) {
-                    Button("Listen", systemImage: "speaker.wave.2", action: model.listen)
-                        .buttonStyle(.bordered)
-                    Button("Start", systemImage: "play.fill", action: model.start)
-                        .buttonStyle(.borderedProminent)
-                }
-                .controlSize(.large)
-                Text(model.message).font(.callout)
-                Text("Listen is optional. Start gives four count-in clicks. Tap each note; do not hold it.")
-                    .font(.callout).foregroundStyle(.secondary)
-                bluetoothWarning
-                volumes
-                Text("Four exercises · All unlocked · Tempos remembered until the app closes")
-                    .font(.caption).foregroundStyle(.secondary)
-            }.padding()
-        }
-    }
-
-    /// Keep all notation and the pad on-screen during an attempt, without a
-    /// scroll gesture competing with touch delivery. Review/preparation may scroll.
-    private var performance: some View {
-        VStack(spacing: 8) {
-            HStack {
-                Text(model.exercise.title).font(.headline).lineLimit(1).minimumScaleFactor(0.7)
+    private func practiceLayout(height: CGFloat) -> some View {
+        // Identical musical geometry for preparation, Listen, and Play. Only the
+        // lower interaction region changes. Compact heights protect the pad.
+        let compact = height < 620
+        let rowHeight: CGFloat = compact ? 80 : 104
+        let spacing: CGFloat = compact ? 4 : 12
+        return VStack(spacing: spacing) {
+            HStack(spacing: 12) {
+                Button { editor = .tempo } label: {
+                    Text("\(model.bpm) BPM").font(.subheadline.weight(.medium).monospacedDigit())
+                        .padding(.horizontal, 12).frame(minHeight: 44)
+                }.disabled(model.busy)
+                    .accessibilityLabel("Tempo, \(model.bpm) beats per minute")
                 Spacer()
-                Text("\(model.bpm) BPM").font(.caption.monospacedDigit())
+                Button { editor = .volume } label: {
+                    Image(systemName: "speaker.wave.2").frame(width: 44, height: 44)
+                }.accessibilityLabel("Volume")
             }
+            .opacity(attempting ? 0 : 1)
+            .allowsHitTesting(!attempting).accessibilityHidden(attempting)
+
             HStack(spacing: 20) {
                 ForEach(1...4, id: \.self) { value in
-                    Text("\(value)").font(.title3.monospacedDigit())
+                    Text("\(value)").font(.system(.body, design: .rounded).monospacedDigit())
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                        .lineLimit(1).minimumScaleFactor(0.8)
+                        .foregroundStyle(model.beat == value ? Color.white : Color.primary)
                         .frame(width: 36, height: 36)
-                        .background(model.beat == value ? Color.accentColor.opacity(0.3) : Color.secondary.opacity(0.1))
-                        .clipShape(Circle())
+                        .background(model.beat == value ? AppTheme.beat : AppTheme.surface, in: Circle())
                 }
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Beat \(model.beat.map(String.init) ?? "none")")
-            RhythmNotationView(exercise: model.exercise, rowHeight: 88)
-            Text(model.message).font(.callout).lineLimit(1).minimumScaleFactor(0.7)
-            if model.snapshot?.bluetooth == true {
-                Text("Bluetooth audio may lag; scoring is not calibrated.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            if model.phase == .listening {
-                Spacer(minLength: 4)
-                Image(systemName: "speaker.wave.2.fill").font(.largeTitle).accessibilityHidden(true)
-                Text("Listen to the snare against the clicks.").font(.callout)
-                Spacer(minLength: 4)
-                HStack(spacing: 24) {
-                    Button("Stop Listening", action: model.listen).buttonStyle(.bordered)
-                    Button("Start", action: model.start).buttonStyle(.borderedProminent)
-                }
-                .controlSize(.large)
+            Text(phaseLabel).font(.caption).foregroundStyle(.secondary)
+                .lineLimit(2).minimumScaleFactor(0.7)
+                .frame(maxWidth: .infinity)
+                .frame(height: compact ? 40 : 56)
+            RhythmNotationView(exercise: model.exercise, rowHeight: rowHeight)
+
+            if attempting {
+                TouchPad(enabled: model.phase == .countIn || model.phase == .performing,
+                         hapticsEnabled: preferences.hapticsEnabled, onContacts: model.tap)
+                    .frame(minHeight: 80, maxHeight: .infinity)
             } else {
-                TouchPad(enabled: model.phase == .countIn || model.phase == .performing, onContacts: model.tap)
-                    .frame(minHeight: 100, maxHeight: .infinity)
-                Button("Cancel attempt", action: model.cancel).buttonStyle(.bordered)
+                GeometryReader { controls in
+                    ScrollView {
+                        preparationControls
+                            .frame(minHeight: controls.size.height)
+                    }
+                }
             }
         }
-        .padding(12)
+        .padding(.horizontal, 20).padding(.vertical, compact ? 8 : 16)
     }
 
-    @ViewBuilder private var bluetoothWarning: some View {
-        if model.snapshot?.bluetooth == true {
-            Text("Bluetooth can delay sound. Timing feedback is not latency-calibrated.")
-                .font(.callout).foregroundStyle(.secondary)
+    // Only supporting controls scroll. The musical region never changes its
+    // screen position when Play is pressed after scrolling at a large text size.
+    private var preparationControls: some View {
+        VStack(spacing: 12) {
+            if model.phase == .cancelled, model.message != "Ready" {
+                Text(model.message).font(.callout).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if model.phase != .listening, model.bluetoothConnected {
+                Button { editor = .bluetooth } label: {
+                    Label("Bluetooth may delay sound", systemImage: "info.circle")
+                        .font(.footnote).frame(minHeight: 44)
+                }
+            }
+            Spacer(minLength: 20)
+            playbackControls
+            Text("Play begins with four count-in beats.")
+                .font(.footnote).foregroundStyle(.secondary)
+                .padding(.bottom, 8)
         }
     }
 
-    private var volumes: some View {
-        VStack {
-            HStack {
-                Text("Metronome").frame(width: 100, alignment: .leading)
-                Slider(value: $model.metronomeVolume).accessibilityLabel("Metronome volume")
-            }
-            HStack {
-                Text("Rhythm").frame(width: 100, alignment: .leading)
-                Slider(value: $model.rhythmVolume).accessibilityLabel("Rhythm volume")
-            }
+    private var playbackControls: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 16) { listenButton; playButton }
+            VStack(spacing: 12) { listenButton; playButton }
+        }.controlSize(.large)
+    }
+    private var listenButton: some View {
+        Button(model.phase == .listening ? "Stop Listening" : "Listen",
+               systemImage: model.phase == .listening ? "stop.fill" : "speaker.wave.2",
+               action: model.listen).buttonStyle(.bordered)
+    }
+    private var playButton: some View {
+        Button("Play", systemImage: "play.fill", action: model.start)
+            .buttonStyle(.borderedProminent)
+            .foregroundStyle(AppTheme.onAccent)
+    }
+    private var phaseLabel: String {
+        switch model.phase {
+        case .countIn: return "Count-in"
+        case .performing: return "Bar \(max(1, model.bar)) of \(model.exercise.barCount)"
+        case .listening: return "Listening · Bar \(max(1, model.bar)) of \(model.exercise.barCount)"
+        default: return "Ready"
         }
     }
 }

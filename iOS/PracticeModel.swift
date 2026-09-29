@@ -17,8 +17,9 @@ final class PracticeModel: ObservableObject {
     @Published private(set) var result: PracticeResult?
     @Published private(set) var snapshot: AudioSnapshot?
     @Published private(set) var message = "Ready"
-    @Published var metronomeVolume = 0.7 { didSet { updateVolumes() } }
-    @Published var rhythmVolume = 0.7 { didSet { updateVolumes() } }
+    @Published var metronomeVolume: Double { didSet { updateVolumes() } }
+    @Published var rhythmVolume: Double { didSet { updateVolumes() } }
+    @Published private(set) var bluetoothConnected = false
     @Published var errorMessage: String?
 
     private var tempos: [String: Int] = [:]
@@ -31,6 +32,34 @@ final class PracticeModel: ObservableObject {
     private var armedAt = Double.infinity
     private var drainUntil: Double?
     private var intentionalPlaybackStopAt: Double?
+    private let defaults: UserDefaults
+    private var routeObserver: NSObjectProtocol?
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        func volume(_ key: String) -> Double {
+            guard let value = defaults.object(forKey: key) as? Double, value.isFinite else { return 0.7 }
+            return min(1, max(0, value))
+        }
+        metronomeVolume = volume("metronomeVolume")
+        rhythmVolume = volume("rhythmVolume")
+        refreshRoute()
+        routeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.refreshRoute() }
+        }
+    }
+
+    deinit {
+        if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }
+    }
+
+    private func refreshRoute() {
+        bluetoothConnected = AVAudioSession.sharedInstance().currentRoute.outputs.contains {
+            [.bluetoothA2DP, .bluetoothHFP, .bluetoothLE].contains($0.portType)
+        }
+    }
 
     func select(_ exercise: Exercise) {
         guard !busy, Exercise.catalog.contains(exercise) else { return }
@@ -58,13 +87,10 @@ final class PracticeModel: ObservableObject {
 
     func cancel() {
         guard busy else { return }
-        let wasListening = phase == .listening
         cancel(reason: .manual)
-        if wasListening {
-            session?.reset()
-            phase = .ready
-            message = "Ready"
-        }
+        session?.reset()
+        phase = .ready
+        message = "Ready"
     }
 
     func retry() {
@@ -257,7 +283,13 @@ final class PracticeModel: ObservableObject {
         phase = .cancelled
         beat = nil
         bar = 0
-        message = "Cancelled — \(reason.rawValue). Ready to try again."
+        switch reason {
+        case .manual: message = "Ready"
+        case .backgrounded: message = "Practice stopped when you left the app. Start again when ready."
+        case .interrupted: message = "Practice was interrupted. Start again when ready."
+        case .routeChanged: message = "Practice stopped because the audio output changed. Start again when ready."
+        default: message = "Practice stopped before it could finish. No score was recorded. Please try again."
+        }
     }
 
     private func fail(_ message: String) {
@@ -284,6 +316,8 @@ final class PracticeModel: ObservableObject {
     }
 
     private func updateVolumes() {
+        defaults.set(metronomeVolume, forKey: "metronomeVolume")
+        defaults.set(rhythmVolume, forKey: "rhythmVolume")
         audio?.setVolumes(metronome: Float(metronomeVolume), rhythm: Float(rhythmVolume))
     }
 

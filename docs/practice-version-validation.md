@@ -1,12 +1,33 @@
 # Four-exercise practice version: validation and device checklist
 
-Scope: [approved decisions 49–61](planning/practice-version.md),
-[GitHub issue #2](https://github.com/armaan-io/rhythmic/issues/2).
+Current scope: [approved UI redesign](planning/ui-redesign.md),
+[GitHub issue #3](https://github.com/armaan-io/rhythmic/issues/3), building on
+[decisions 49–61](planning/practice-version.md) and
+[original issue #2](https://github.com/armaan-io/rhythmic/issues/2).
 The user's acceptance of the original timing build is recorded separately in
 [timing-test validation](timing-test-validation.md). It does **not** automatically
 validate this version's new audio, notation, matching integration, or review UI.
 
-## Implementation-session results
+## Current UI redesign validation — version 1.2, build 3
+
+- **Full XCTest suite: 24 passed, 0 failures** (15 practice-session tests and
+  9 timing-session tests), using Swift 6.2.3 on Linux.
+- Linux core build with warnings treated as errors: passed.
+- iOS Swift frontend syntax parsing: passed with DEBUG enabled and in the
+  Release configuration. These parser checks are **not Apple SDK typechecking**.
+- Fresh XcodeGen generation: passed, including the new theme/settings source.
+- Standards review: no outstanding findings after removing positional category
+  coupling and addressing large-text musical layout risks.
+- Spec review: no outstanding findings after anchoring the musical region outside
+  scrolling controls, bounding beat typography, fixing the phase-label slot, and
+  exposing matched partners to VoiceOver. Reviews used baseline `7b3ec06`.
+- Git whitespace checks: passed.
+- Apple SDK build and real-iPhone validation of the redesign remain pending.
+
+## Historical implementation-session results — original practice version
+
+This section records the pre-redesign implementation of issue #2. Its test count,
+project generation, and review outcomes do not validate the current redesign.
 
 - **Full XCTest suite: 22 passed, 0 failures** (13 practice-session tests and 9
   unchanged timing-session tests), using Swift 6.2.3 on Linux.
@@ -40,7 +61,9 @@ open RhythmTiming.xcodeproj
 
 Reapply your signing team/bundle identifier if regenerating overwrote project-only
 edits. Keep a local copy of those settings; never commit signing credentials.
-The app display name is **Rhythm Trainer**, version 1.1, build 2.
+The app display name is **Rhythm Trainer**, version **1.2, build 3**.
+Use a DEBUG build to check Diagnostics. To verify the normal interface without
+Diagnostics, set the scheme's Run build configuration to Release and run it.
 See [the existing setup guide](timing-test-device-guide.md#build-on-a-mac) for
 XcodeGen installation and signing details. No new third-party runtime dependencies
 or microphone permissions are needed.
@@ -60,7 +83,9 @@ implementation. Coverage includes:
 - Pre-downbeat first-note matching, ignored warmups, opening rests, extras/misses,
   stable matching for duplicate and out-of-order contacts, whole-phrase objective
   priorities and paired timeline identifiers.
-- 100/88/89 score examples, smooth partial credit, no timestamp realignment,
+- Revised category-based scoring: 63 for one On time and three Early/Late,
+  75 for four On time plus one Extra, zero floor, and 100 reserved for all
+  targets On time with no extras. No timestamp realignment,
   no-tap attempts, invalid inputs, cancellation, and bounded contact memory.
 - Stable half-point rounding at multiple uptime magnitudes and explicit deferred
   finalization while draining separate input batches after the end observation.
@@ -71,11 +96,42 @@ compilation validates the core, **not** SwiftUI/UIKit/AVFoundation. Syntax parsi
 of iOS sources and XcodeGen generation are useful additional checks but cannot
 substitute for an Apple SDK build or physical-device testing.
 
-## Real-iPhone checklist
+## Current UI redesign: real-iPhone checklist
 
 Record the tested commit, Xcode/iOS versions, device, route, BPM, and failures.
 Do not call untested cases passed. Speaker and wired routes are the primary
 timing reference; Bluetooth stays allowed with an explicit warning, not calibration.
+
+### Navigation, settings, and phase layout
+
+- **Library/Settings:** verify library-first launch with Quarters, Eighth Notes,
+  Rests, and Syncopation sections, visible exercise names/bar counts, and all four
+  exercises accessible. Check dedicated preparation, practice, review, and Settings.
+- **Stable layout:** on a small iPhone at normal and maximum accessibility text
+  sizes, move through preparation, Listen, count-in, and performance. The musical
+  area stays anchored, one notation bar per row, with fixed numbered beat circles
+  and readable phase labels. Active practice keeps notation, pad, and Cancel
+  visible without scrolling; other screens may scroll at larger text sizes.
+  Check contrast in both appearances and transitions with Reduce Motion enabled.
+- **Appearance persistence:** select Light, Dark, and System in turn; relaunch
+  after each selection. System follows the device appearance, including changes
+  while the app is open; explicit Light/Dark choices remain selected.
+- **Volume persistence:** change Metronome/Rhythm in Settings and preparation's
+  volume sheet; both surfaces reflect the same immediate values. Verify each
+  level survives relaunch and affects its intended audio. Volume remains available
+  during Listen; tempo is disabled then, and both controls hide during practice.
+- **Session-only tempo:** adjust different exercises, switch away and back, then
+  retry; each retains its session BPM. Relaunch resets each to 80 BPM while
+  appearance and volume preferences persist.
+- **Haptics:** with fresh preferences, pad haptics are off. Enable in Settings and
+  verify light contact feedback on supported hardware; disable and verify it stops.
+- **Bluetooth preparation:** warning appears on preparation only, with an
+  on-demand explanation. Bluetooth remains allowed; no calibration is implied.
+- **Inline cancellation:** manual Cancel returns quietly to preparation. App,
+  audio, or route interruptions show inline notices and leave no scored result.
+  Confirm the next Listen/Play works without stale cancellation callbacks.
+
+### Musical behavior and review
 
 1. **Notation:** inspect all four exercises at normal and large text sizes, in
    light and dark appearance. Five staff lines, percussion clef, 4/4, notes,
@@ -85,7 +141,7 @@ timing reference; Bluetooth stays allowed with an explicit warning, not calibrat
    The renderer uses vector glyphs for this limited vocabulary, not a music font.
 2. **Listen:** each phrase plays once, with metronome and snare starting together
    (an opening rest still has a click). No musical count-in. Pad does not sound.
-   Tempo is locked. Stop Listening returns to preparation. Start during listening
+   Tempo is locked. Stop Listening returns to preparation. Play during listening
    stops the old audio and creates a fresh four-click count-in with no overlap.
 3. **Sound:** compare dry snare against the metronome on the built-in speaker.
    It should be easier to hear than the previous low hit, without clipping or
@@ -103,22 +159,27 @@ timing reference; Bluetooth stays allowed with an explicit warning, not calibrat
    simultaneous contacts remain separate; moves/releases add no taps. Do not
    show live red/green judgments or running score. Visual stutter must not move
    scheduled clicks. Try 30, 80, 120 and 240 BPM.
-6. **Review:** score, all five counts (including zeros), original notation, then
-   timeline. One bar per row; hollow target markers and solid actual tap markers
-   occupy one lane. True offsets must not be exaggerated or clamped. Early first
+6. **Review:** whole-number score, all five adaptive counts (including zeros),
+   timeline, then original notation. One bar per row; hollow target markers and
+   solid actual tap markers occupy one lane. True offsets must not be exaggerated
+   or clamped. Early first
    notes remain visible before beat 1. Cross-bar pairs may occupy different rows.
    Selecting a marker highlights both members of a match; misses/extras have no
-   counterpart. Nearby-marker buttons and Inspect bar controls must make exact
-   overlaps selectable. No millisecond labels or playback on review.
+   counterpart. Select markers directly; an explanation appears beneath their bar.
+   A chooser appears only for overlapping candidates. No millisecond labels or
+   playback on review. Check the on-demand How scoring works sheet, fixed bottom
+   Retry to preparation, and top Library action directly to selection.
 7. **Scoring:** play accurately, omit a note, add an extra, tap consistently late,
    and do not tap at all. Results should reflect those distinctions without
    shifting a consistent offset away or cascading one miss into later misses.
-   Use automated tests—not subjective finger accuracy—to verify exact thresholds.
+   Use automated tests—not subjective finger accuracy—to verify exact thresholds
+   and examples: one On time plus three Early/Late scores 63; four On time plus
+   one Extra scores 75. Verify the scoring explanation matches these rules.
 8. **Retry/selection:** Retry returns to preparation at the same tempo. Switch
    exercises and back; each remembers its own BPM. All four are unlocked. New
    attempts replace results. Terminate/relaunch: all tempos reset to 80 and no
    history remains. Review must always belong to the selected exercise/attempt.
-9. **Cancellation:** Stop, app switching/locking, a call, or route change during
+9. **Cancellation:** Cancel, app switching/locking, a call, or route change during
    setup, listening, count-in and performance must stop playback and produce no
    score. Starting again must work; stale delayed callbacks must not stop the new
    attempt. Backgrounding while already reviewing must preserve the current result.
@@ -132,9 +193,10 @@ timing reference; Bluetooth stays allowed with an explicit warning, not calibrat
    must still cancel even if its MainActor handler runs during the drain. Only
    engine configuration notifications timestamped at/after intentional stopping
    are suppressed there; route, interruption and media-service events are not.
-10. **Diagnostics:** open only while practice is idle; close/swipe-dismiss during
-    a diagnostic run and ensure audio stops. Return to practice without competing
-    engines. JSON sharing remains in Diagnostics only.
+10. **DEBUG-only Diagnostics:** in a DEBUG build, open only while practice is idle;
+    close/swipe-dismiss during a diagnostic run and ensure audio stops. Return to
+    practice without competing engines. JSON sharing remains in Diagnostics only.
+    Run a Release build and verify Diagnostics is hidden.
 
 ## Measurement limitations
 

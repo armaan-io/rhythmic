@@ -110,17 +110,11 @@ extension PracticeResult {
                               late: targets.filter { $0.judgment == .late }.count,
                               missed: targets.filter { $0.judgment == .missed }.count,
                               extra: taps.filter { $0.judgment == .extra }.count)
-        // Fixed target order also makes floating-point summation reproducible.
-        let points = times.indices.reduce(0.0) { total, i in
-            guard let j = targetTaps[i] else { return total }
-            let error = abs(ordered[j].element.eventTime - times[i])
-            return total + (error <= onTime + 1e-9 ? 1 : max(0, (window - error) / (window - onTime)))
-        }
-        // Absolute uptime subtraction can place an exact half-point just below
-        // its mathematical value. Correct only the bounded binary64 uncertainty,
-        // not player timing: at most 0.0001 percentage points near a rounding tie.
-        let roundingTolerance = min(0.0001, max(1e-9, 200 * start.ulp / (window - onTime)))
-        score = Int((100 * points / Double(times.count + counts.extra) + roundingTolerance).rounded())
+        let points = Double(counts.onTime) + 0.5 * Double(counts.early + counts.late)
+        let roundedScore = Int(max(0, 100 * (points - Double(counts.extra)) / Double(times.count)).rounded())
+        // Rounding must never turn an imperfect attempt into a perfect score.
+        let isPerfect = counts.onTime == times.count && counts.extra == 0
+        score = isPerfect ? 100 : min(99, roundedScore)
         performanceStartTime = start
         beatInterval = interval
         barCount = exercise.barCount

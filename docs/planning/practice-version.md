@@ -1,6 +1,20 @@
 # Authorized four-exercise practice version
 
-Implementation tracker: [armaan-io/rhythmic#2](https://github.com/armaan-io/rhythmic/issues/2).
+Original implementation tracker: [armaan-io/rhythmic#2](https://github.com/armaan-io/rhythmic/issues/2).
+
+## Supersession — current approved UI redesign
+
+The approved [UI redesign (Q62–106)](ui-redesign.md), tracked in
+[issue #3](https://github.com/armaan-io/rhythmic/issues/3), supersedes the earlier
+visual styling, Q53 scoring formula, and always-accessible diagnostics below.
+It authorizes persisted appearance and volume preferences plus optional pad
+haptics (default off). Tempos remain session-only; Diagnostics is DEBUG-only.
+The current build is **1.2, build 3**. See the
+[validation record and device checklist](../practice-version-validation.md).
+
+The decisions below preserve the original authorization and its historical
+requirements; apply the redesign where it supersedes them. In particular, Q58's
+no-persistence wording concerns tempos/results, not the newly approved preferences.
 
 ## Status and authorization
 
