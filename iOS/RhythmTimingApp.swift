@@ -4,13 +4,44 @@ import SwiftUI
 @MainActor
 struct RhythmTimingApp: App {
     @StateObject private var model = TimingHarnessModel()
+    @StateObject private var practice = PracticeModel()
+    @State private var diagnosticsPresented = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
-            HarnessView(model: model)
+            NavigationStack {
+                PracticeView(model: practice)
+                    .navigationTitle("Rhythm Trainer")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Diagnostics", systemImage: "waveform.path.ecg") {
+                                diagnosticsPresented = true
+                            }
+                            .disabled(practice.busy)
+                        }
+                    }
+            }
+                .sheet(isPresented: $diagnosticsPresented) {
+                    NavigationStack {
+                        HarnessView(model: model)
+                            .toolbar {
+                                ToolbarItem(placement: .confirmationAction) {
+                                    Button("Done") {
+                                        model.leaveActiveScene()
+                                        diagnosticsPresented = false
+                                    }
+                                }
+                            }
+                    }
+                    .onDisappear { model.leaveActiveScene() }
+                }
                 .onChange(of: scenePhase) { _, phase in
-                    if phase != .active { model.leaveActiveScene() }
+                    if phase != .active {
+                        model.leaveActiveScene()
+                        practice.leaveActiveScene()
+                    }
                 }
         }
     }

@@ -1,5 +1,10 @@
 # Rhythm Trainer: product interview checkpoint
 
+**Current continuation:** decisions 49–61 and explicit authorization for the
+four-exercise practice version are in `practice-version.md` alongside this file.
+The user reported that the timing build passed their checks. Historical status
+below is retained; consult the continuation before resuming at question 62.
+
 **Status: DRAFT — interview incomplete; implementation not authorized.**
 
 **Subsequent scope authorization:** after saving this checkpoint, the user

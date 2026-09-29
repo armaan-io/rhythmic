@@ -33,7 +33,7 @@ private struct RunDiagnostics: Encodable {
     let finalMetronomeVolume: Double
     let finalRhythmVolume: Double
     let clockRationale = "UITouch.timestamp, ProcessInfo.systemUptime receipt time, and AVAudioTime host-time seconds use the system uptime timebase. Planned beats are requested host times, rounded to the nearest PCM frame relative to start. UI updates do not schedule audio. No latency correction is applied. Event-to-beat differences are not physical acoustic latency measurements."
-    let soundPolicy = "One mono PCM metronome buffer at actual engine sample rate; 16 preattached tap voices, oldest voice stolen on wrap. Volume sliders remain live; only initial/final levels are captured."
+    let soundPolicy = "One mono PCM metronome buffer at actual engine sample rate; deterministic 80 ms dry snare taps with 16 preattached voices, oldest voice stolen on wrap. Rhythm gain is divided by the active voice count on hits/level changes for summing headroom. Volume sliders remain live; only initial/final levels are captured."
 }
 
 @MainActor

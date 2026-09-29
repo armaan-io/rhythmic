@@ -19,13 +19,13 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.armaan.RhythmTiming
         SWIFT_VERSION: '5.0'
-        MARKETING_VERSION: '1.0'
-        CURRENT_PROJECT_VERSION: '1'
+        MARKETING_VERSION: '1.1'
+        CURRENT_PROJECT_VERSION: '2'
         TARGETED_DEVICE_FAMILY: '1'
         SUPPORTS_MACCATALYST: NO
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: Rhythm Timing
+        INFOPLIST_KEY_CFBundleDisplayName: Rhythm Trainer
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait

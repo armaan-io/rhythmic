@@ -1,5 +1,11 @@
 # Build and validate the iPhone timing harness
 
+The current app opens the four-exercise practice version. Use **Diagnostics**
+to access the original harness described here. Mac build/signing instructions
+remain applicable. For the new flow use [the practice checklist](practice-version-validation.md).
+The tap sample is now a dry snare shared with practice demonstrations; metronome
+clicks are unchanged. Validate the new sound even if the older harness passed.
+
 This is the authorized **timing test only**: a 16-bar accented quarter-note
 metronome, an independent-multitouch percussion pad, and raw JSON diagnostics.
 It has no scoring, calibration, notation, curriculum, microphone input,

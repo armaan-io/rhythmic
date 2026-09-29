@@ -1,5 +1,14 @@
 # Timing-test validation status
 
+## Subsequent user validation
+
+After testing the pushed timing build, the user reported: "i have tested the
+build and it passed all checks. it is a go on the next version". This satisfies
+their go/no-go decision for proceeding, but does not provide device/route details
+or independently measured latency data. The historical Linux validation and
+limitations below describe what the agent itself verified. The next practice
+version requires fresh device checks, especially snare audibility and notation.
+
 Source milestone: authorized timing harness for
 [issue #1](https://github.com/armaan-io/rhythmic/issues/1), not the full app.
 
